@@ -30,3 +30,19 @@ var mtpConfig = gadgetConfigItem{
 	path:       []string{"functions", "ffs.mtp"},
 	configPath: []string{"ffs.mtp"},
 }
+
+// SetDefaultMassStorageCdrom sets the cdrom mode the gadget is first bound
+// with. Call it before NewUsbGadget: if the first image mounted at startup
+// needs the other mode, changing it later rebinds the UDC, and the host sees
+// the KVM unplugged and replugged a few seconds after it first appeared, which
+// a BIOS that is already running can fail to pick up (keyboard dead).
+func SetDefaultMassStorageCdrom(cdrom bool) {
+	mode := "0"
+	if cdrom {
+		mode = "1"
+	}
+	massStorageLun0Config.attrs["cdrom"] = mode
+	if item, ok := defaultGadgetConfig["mass_storage_lun0"]; ok {
+		item.attrs["cdrom"] = mode
+	}
+}

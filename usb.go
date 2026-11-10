@@ -27,6 +27,13 @@ func initUsbGadget() {
 		}
 	}
 
+	// system_info.img is mounted as a disk right after start-up; bind the
+	// gadget in that mode from the start so it is not rebound a few seconds
+	// later (see usbgadget.SetDefaultMassStorageCdrom).
+	if config.AutoMountSystemInfo {
+		usbgadget.SetDefaultMassStorageCdrom(false)
+	}
+
 	gadget = usbgadget.NewUsbGadget(
 		"kvm",
 		config.UsbDevices,
