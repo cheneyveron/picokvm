@@ -550,7 +550,9 @@ export default function MobileHome() {
     }
   }
 
-  useInterval(updateVpnStates, 5000);
+  // Each poll makes the device spawn the tailscale/zerotier CLIs; the
+  // status-bar dots rarely change, so poll once a minute (and on mount).
+  useInterval(updateVpnStates, 60000);
 
   const setNetworkState = useNetworkStateStore(state => state.setNetworkState);
 
