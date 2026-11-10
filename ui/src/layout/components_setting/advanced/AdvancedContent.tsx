@@ -24,6 +24,7 @@ export default function SettingsAdvanced() {
   const [showLoopbackWarning, setShowLoopbackWarning] = useState(false);
   const [showRebootConfirm, setShowRebootConfirm] = useState(false);
   const [showConfigEdit, setShowConfigEdit] = useState(false);
+  const [isResettingEdid, setIsResettingEdid] = useState(false);
   const [showConfigSavedReboot, setShowConfigSavedReboot] = useState(false);
   const [configContent, setConfigContent] = useState("");
   const [isSavingConfig, setIsSavingConfig] = useState(false);
@@ -307,6 +308,35 @@ export default function SettingsAdvanced() {
             }}
           >
             {$at("Reinitialize USB Gadget")}
+          </AntdButton>
+        </SettingsItem>
+
+        <SettingsItem
+          title={$at("EDID Reset")}
+          description={$at("Restore the default EDID if the host no longer detects the KVM as a display")}
+        >
+          <AntdButton
+            type="primary"
+            className={`${isMobile?"w-full":""}`}
+            disabled={isResettingEdid}
+            loading={isResettingEdid}
+            onClick={() => {
+              if (isResettingEdid) return;
+              setIsResettingEdid(true);
+              // An empty EDID makes the device write and save its built-in default.
+              send("setEDID", { edid: "" }, resp => {
+                setIsResettingEdid(false);
+                if ("error" in resp) {
+                  notifications.error(
+                    `Failed to reset EDID: ${resp.error.data || "Unknown error"}`,
+                  );
+                  return;
+                }
+                notifications.success("EDID reset to default");
+              });
+            }}
+          >
+            {$at("Reset EDID")}
           </AntdButton>
         </SettingsItem>
 
