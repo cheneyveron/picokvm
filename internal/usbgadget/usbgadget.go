@@ -58,10 +58,15 @@ type UsbGadget struct {
 
 	keyboardHidFile *os.File
 	keyboardLock    sync.Mutex
-	absMouseHidFile *os.File
-	absMouseLock    sync.Mutex
-	relMouseHidFile *os.File
-	relMouseLock    sync.Mutex
+
+	// latest keyboard report not yet accepted by the host (see KeyboardReport)
+	keyboardPending      []byte
+	keyboardRetrying     bool
+	keyboardStalledSince time.Time
+	absMouseHidFile      *os.File
+	absMouseLock         sync.Mutex
+	relMouseHidFile      *os.File
+	relMouseLock         sync.Mutex
 
 	keyboardState       KeyboardState
 	keyboardStateLock   sync.Mutex

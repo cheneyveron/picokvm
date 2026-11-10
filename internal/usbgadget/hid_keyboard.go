@@ -210,19 +210,79 @@ func (u *UsbGadget) OpenKeyboardHidFile() error {
 	return u.openKeyboardHidFile()
 }
 
+const (
+	// A host that stops polling (USB reset during a reboot, a hung or busy
+	// BIOS) would otherwise block the write, and with it keyboardLock, forever.
+	keyboardWriteTimeout  = 500 * time.Millisecond
+	keyboardRetryInterval = 50 * time.Millisecond
+	keyboardGiveUpAfter   = 10 * time.Second
+)
+
 func (u *UsbGadget) keyboardWriteHidFile(data []byte) error {
 	if err := u.openKeyboardHidFile(); err != nil {
 		return err
 	}
 
+	if err := u.keyboardHidFile.SetWriteDeadline(time.Now().Add(keyboardWriteTimeout)); err != nil {
+		u.logWithSupression("keyboardSetWriteDeadline", 1000, u.log, err, "hidg0 write deadline unsupported, writing without timeout")
+	}
+
 	_, err := u.keyboardHidFile.Write(data)
 	if err != nil {
+		if errors.Is(err, os.ErrDeadlineExceeded) {
+			return err // host is slow; keep the file, the caller retries
+		}
 		u.logWithSupression("keyboardWriteHidFile", 100, u.log, err, "failed to write to hidg0")
 		u.keyboardHidFile.Close()
 		u.keyboardHidFile = nil
 		return err
 	}
 	u.resetLogSuppressionCounter("keyboardWriteHidFile")
+	return nil
+}
+
+// flushKeyboardLocked writes the pending report. Reports carry the full key
+// state, so when the host is too slow only the newest one matters: it is kept
+// and retried until the host takes it, which guarantees a key release is
+// never silently lost (a lost release makes the host auto-repeat the key).
+func (u *UsbGadget) flushKeyboardLocked() error {
+	if u.keyboardPending == nil {
+		return nil
+	}
+
+	err := u.keyboardWriteHidFile(u.keyboardPending)
+	if err == nil {
+		u.keyboardPending = nil
+		u.keyboardStalledSince = time.Time{}
+		u.resetUserInputTime()
+		return nil
+	}
+
+	if !errors.Is(err, os.ErrDeadlineExceeded) {
+		// Host gone or gadget broken: it starts over with all keys up.
+		u.keyboardPending = nil
+		u.keyboardStalledSince = time.Time{}
+		return err
+	}
+
+	if u.keyboardStalledSince.IsZero() {
+		u.keyboardStalledSince = time.Now()
+	} else if time.Since(u.keyboardStalledSince) > keyboardGiveUpAfter {
+		u.log.Warn().Msg("host has not read the keyboard endpoint for 10s, dropping pending report")
+		u.keyboardPending = nil
+		u.keyboardStalledSince = time.Time{}
+		return nil
+	}
+
+	if !u.keyboardRetrying {
+		u.keyboardRetrying = true
+		time.AfterFunc(keyboardRetryInterval, func() {
+			u.keyboardLock.Lock()
+			defer u.keyboardLock.Unlock()
+			u.keyboardRetrying = false
+			_ = u.flushKeyboardLocked()
+		})
+	}
 	return nil
 }
 
@@ -237,11 +297,6 @@ func (u *UsbGadget) KeyboardReport(modifier uint8, keys []uint8) error {
 		keys = append(keys, make([]uint8, 6-len(keys))...)
 	}
 
-	err := u.keyboardWriteHidFile([]byte{modifier, 0, keys[0], keys[1], keys[2], keys[3], keys[4], keys[5]})
-	if err != nil {
-		return err
-	}
-
-	u.resetUserInputTime()
-	return nil
+	u.keyboardPending = []byte{modifier, 0, keys[0], keys[1], keys[2], keys[3], keys[4], keys[5]}
+	return u.flushKeyboardLocked()
 }
