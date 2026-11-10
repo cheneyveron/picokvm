@@ -111,9 +111,11 @@ func newSession(sessionConfig SessionConfig) (*Session, error) {
 		switch d.Label() {
 		case "rpc":
 			session.RPCChannel = d
+			dispatcher := newRPCDispatcher(session)
 			d.OnMessage(func(msg webrtc.DataChannelMessage) {
-				go onRPCMessage(msg, session)
+				dispatcher.dispatch(msg, session)
 			})
+			d.OnClose(dispatcher.close)
 			triggerOTAStateUpdate()
 			triggerVideoStateUpdate()
 			triggerUSBStateUpdate()
